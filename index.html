@@ -9,7 +9,13 @@
 <body>
 <div class="app_container">
     <aside class="sidebar">
-        <h1 class="logo">g<span>Coded</span></h1>
+        <div class="logo-row">
+            <h1 class="logo">g<span>Coded</span></h1>
+            <select id="uiMode" title="Baby mode hides everything except the look, the page and the pen.">
+                <option value="baby" selected>Baby Mode</option>
+                <option value="pro">Pro Mode</option>
+            </select>
+        </div>
 
         <div class="control-group">
             <h3>1. Select Image</h3>
@@ -17,15 +23,23 @@
         </div>
 
         <div class="control-group">
-            <h3>2. Machine Settings</h3>
-            <label>Pen Down Command</label>
-            <input type="text" id="penDownCmd" value="M3 S90">
+            <h3>2. Look</h3>
+            <select id="lookPreset">
+                <option value="custom">Custom / hand-tuned</option>
+                <option value="portrait" selected>Portrait Crosshatch</option>
+                <option value="sketch">Sketch (follows the form)</option>
+                <option value="lineart">Line Art (outline only)</option>
+                <option value="topographic">Topographic Contours</option>
+                <option value="stipple">Stipple Dots</option>
+                <option value="oneline">One Continuous Line</option>
+                <option value="poster">Bold Poster</option>
+                <option value="engraving">Fine Engraving</option>
+            </select>
+            <small id="lookHint">Crosshatched tonal portrait in three shading layers.</small>
+        </div>
 
-            <label>Pen Up Command</label>
-            <input type="text" id="penUpCmd" value="M3 S0">
-
-            <label>Draw Feedrate (mm/min)</label>
-            <input type="number" id="feedRate" value="1500" min="1">
+        <div class="control-group">
+            <h3>3. Page &amp; Pen</h3>
 
             <label>Paper Size</label>
             <select id="paperPreset">
@@ -56,13 +70,69 @@
 
             <label>Pen Width (mm)</label>
             <input type="number" id="penWidth" value="0.4" min="0.01" step="0.05">
+        </div>
+
+        <div class="control-group pro-only">
+            <h3>4. Machine</h3>
+
+            <label>Machine Profile</label>
+            <select id="machineProfile">
+                <option value="grbl-servo" selected>GRBL + servo pen (M3 S)</option>
+                <option value="grbl-z">GRBL + Z-axis pen</option>
+                <option value="marlin-z">Marlin + Z-axis pen</option>
+                <option value="custom">Custom</option>
+            </select>
+
+            <div id="servoPenBlock">
+                <label>Pen Down Command</label>
+                <input type="text" id="penDownCmd" value="M3 S90">
+
+                <label>Pen Up Command</label>
+                <input type="text" id="penUpCmd" value="M3 S0">
+            </div>
+
+            <div id="zPenBlock" style="display: none;">
+                <div style="display: flex; gap: 8px;">
+                    <div style="flex: 1;">
+                        <label>Pen Up Z (mm)</label>
+                        <input type="number" id="penUpZ" value="5" step="0.5">
+                    </div>
+                    <div style="flex: 1;">
+                        <label>Pen Down Z (mm)</label>
+                        <input type="number" id="penDownZ" value="0" step="0.5">
+                    </div>
+                </div>
+                <label>Z Feedrate (mm/min)</label>
+                <input type="number" id="zFeed" value="500" min="1">
+            </div>
+
+            <label>Draw Feedrate (mm/min)</label>
+            <input type="number" id="feedRate" value="1500" min="1">
 
             <label>Pen Dwell (ms)</label>
             <input type="number" id="penDwell" value="120" min="0" step="10">
+
+            <div style="display: flex; gap: 8px;">
+                <div style="flex: 1;">
+                    <label>Max Travel X (mm)</label>
+                    <input type="number" id="machineMaxX" value="0" min="0" step="10">
+                </div>
+                <div style="flex: 1;">
+                    <label>Max Travel Y (mm)</label>
+                    <input type="number" id="machineMaxY" value="0" min="0" step="10">
+                </div>
+            </div>
+            <small class="hint">0 disables the bounds check.</small>
+
+            <label>Custom Preamble</label>
+            <textarea id="preamble" rows="2" placeholder="extra G-code before the plot"></textarea>
+
+            <label>Custom Postamble</label>
+            <textarea id="postamble" rows="2" placeholder="extra G-code after the plot"></textarea>
         </div>
 
-        <div class="control-group" id="toneGroup">
-            <h3>3. Image Adjustments</h3>
+        <div class="control-group pro-only" id="toneGroup">
+            <h3>5. Image Adjustments</h3>
 
             <canvas id="histogramCanvas" title="Tone distribution after adjustments. Markers show where your thresholds sit."></canvas>
 
@@ -75,12 +145,12 @@
             <label>Gamma <span class="val" id="gammaVal">1.00</span></label>
             <input type="range" id="gamma" min="10" max="300" value="100">
 
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #e4e4e7;">
-                <input type="checkbox" id="autoLevels" style="width: auto !important; accent-color: #00f5d4;">
+            <label class="check-row">
+                <input type="checkbox" id="autoLevels">
                 Auto levels (stretch to full range)
             </label>
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #e4e4e7;">
-                <input type="checkbox" id="invertImage" style="width: auto !important; accent-color: #00f5d4;">
+            <label class="check-row">
+                <input type="checkbox" id="invertImage">
                 Invert (for light pen on dark paper)
             </label>
 
@@ -89,22 +159,22 @@
                 <option value="box" selected>Blur (softens edges)</option>
                 <option value="median">Median (keeps edges crisp)</option>
             </select>
-        </div>
-
-        <div class="control-group">
-            <h3>4. Application Settings</h3>
-
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #e4e4e7; font-weight: bold;">
-                <input type="checkbox" id="optimizePath" checked style="width: auto !important; accent-color: #00f5d4;">
-                Deep path optimization (2-opt)
-            </label>
 
             <label>Smoothing (mm)</label>
             <input type="number" id="smoothing" value="0.2" min="0" step="0.05">
+        </div>
+
+        <div class="control-group pro-only">
+            <h3>6. Engine</h3>
+
+            <label class="check-row">
+                <input type="checkbox" id="optimizePath" checked>
+                Deep path optimization (2-opt)
+            </label>
 
             <label>Engine Mode</label>
             <select id="engineMode">
-                <option value="bw">Black & White (Single Threshold)</option>
+                <option value="bw">Black &amp; White (Single Threshold)</option>
                 <option value="shading">Shading (Multiple Thresholds)</option>
                 <option value="outline">Outline (Standalone Trace)</option>
             </select>
@@ -130,18 +200,18 @@
 
             <div id="globalAngleContainer" style="display: block; margin-top: 10px; padding-left: 10px; border-left: 2px solid #00f5d4;">
                 <div id="angle1Block">
-                    <label>Line Angle 1 (°)</label>
+                    <label>Line Angle 1 (deg)</label>
                     <input type="number" id="fillAngle1" value="45" min="0" max="360">
                 </div>
                 <div id="angle2Block" style="margin-top: 8px;">
-                    <label>Line Angle 2 (°)</label>
+                    <label>Line Angle 2 (deg)</label>
                     <input type="number" id="fillAngle2" value="135" min="0" max="360">
                 </div>
             </div>
 
             <div id="outlineOverlayContainer" style="margin-top: 12px; margin-bottom: 8px;">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #e4e4e7; font-weight: bold;">
-                    <input type="checkbox" id="enableOutlineOverlay" style="width: auto !important; accent-color: #00f5d4;">
+                <label class="check-row">
+                    <input type="checkbox" id="enableOutlineOverlay">
                     Overlay Outline Pass on top
                 </label>
             </div>
@@ -166,7 +236,10 @@
         </div>
 
         <button id="processBtn" class="btn-accent">Generate G-Code</button>
-        <button id="downloadBtn">Save G-Code</button>
+        <div class="save-row">
+            <button id="downloadBtn">Save G-Code</button>
+            <button id="saveSvgBtn">Save SVG</button>
+        </div>
 
         <div class="canvas-container">
             <h3>Live Machine Toolpath Preview</h3>

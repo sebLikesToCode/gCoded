@@ -125,6 +125,35 @@ function getSmoothing() {
 // Assumed rapid rate, used only for the plot-time estimate shown in the sidebar.
 const ASSUMED_RAPID_MM_MIN = 3000;
 
+function numField(id, fallback) {
+    const v = parseFloat(document.getElementById(id).value);
+    return isNaN(v) ? fallback : v;
+}
+
+// Servo pens are told to move with a spindle command; Z-axis pens are lifted by moving
+// the Z axis. Everything downstream just asks for "the lines that put the pen down".
+function getPenMode() {
+    const profile = document.getElementById("machineProfile").value;
+    return (profile === "grbl-z" || profile === "marlin-z") ? "z" : "servo";
+}
+
+function penDownLines() {
+    if (getPenMode() === "z") {
+        return [`G1 Z${numField("penDownZ", 0).toFixed(2)} F${Math.round(numField("zFeed", 500))}`];
+    }
+    return [document.getElementById("penDownCmd").value];
+}
+
+function penUpLines() {
+    if (getPenMode() === "z") return [`G0 Z${numField("penUpZ", 5).toFixed(2)}`];
+    return [document.getElementById("penUpCmd").value];
+}
+
+function customLines(id) {
+    const raw = document.getElementById(id).value.trim();
+    return raw ? raw.split(/\r?\n/).filter(line => line.trim()) : [];
+}
+
 // Strokes shorter than a single pen dot are image noise, not drawing.
 const MIN_STROKE_MM = 0.4;
 
@@ -527,8 +556,8 @@ function routeCost(paths) {
 
 // Turns the planned route into G-code and reports what the plot will cost.
 function serializeGCode(planned) {
-    const penDownCmd = document.getElementById("penDownCmd").value;
-    const penUpCmd = document.getElementById("penUpCmd").value;
+    const down = penDownLines();
+    const up = penUpLines();
     const dwell = getDwellSeconds();
     const dwellLine = dwell > 0 ? `G4 P${dwell.toFixed(3)}` : null;
 
@@ -537,32 +566,39 @@ function serializeGCode(planned) {
     gcodeLines.push("G90 (Absolute positioning mode)");
     // Without a modal feedrate GRBL rejects the first G1 with "error:22".
     gcodeLines.push(`F${getFeedRate()} (Feedrate for drawing moves)`);
-    gcodeLines.push(penUpCmd);
+    for (const line of customLines("preamble")) gcodeLines.push(line);
+    for (const line of up) gcodeLines.push(line);
 
     let drawDist = 0, travelDist = 0;
+    let maxX = 0, maxY = 0;
     let cursor = { x: 0, y: 0 };
 
     for (const path of planned) {
         travelDist += Math.hypot(path[0].x - cursor.x, path[0].y - cursor.y);
         gcodeLines.push(`G0 X${path[0].x.toFixed(3)} Y${path[0].y.toFixed(3)}`);
-        gcodeLines.push(penDownCmd);
+        for (const line of down) gcodeLines.push(line);
         if (dwellLine) gcodeLines.push(dwellLine);
 
         for (let i = 1; i < path.length; i++) {
             drawDist += Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
             gcodeLines.push(`G1 X${path[i].x.toFixed(3)} Y${path[i].y.toFixed(3)}`);
         }
+        for (const point of path) {
+            if (point.x > maxX) maxX = point.x;
+            if (point.y > maxY) maxY = point.y;
+        }
 
-        gcodeLines.push(penUpCmd);
+        for (const line of up) gcodeLines.push(line);
         if (dwellLine) gcodeLines.push(dwellLine);
         cursor = path[path.length - 1];
     }
 
     travelDist += Math.hypot(cursor.x, cursor.y);
     gcodeLines.push("G0 X0 Y0 (Return to origin)");
+    for (const line of customLines("postamble")) gcodeLines.push(line);
     gcodeLines.push("M2 (Program end)");
 
-    return { drawDist, travelDist };
+    return { drawDist, travelDist, maxX, maxY };
 }
 
 // Re-writes the G-code, stats and preview from previewPaths. Called after generating
@@ -572,6 +608,17 @@ function rebuildOutput() {
     showStats(serializeGCode(previewPaths), previewPaths);
     document.getElementById("gcodeDisplayBox").textContent = gcodeLines.slice(0, 100).join('\n');
     drawGCodePreview();
+}
+
+// Warn before the machine finds out the hard way.
+function boundsWarning(stats) {
+    const limitX = numField("machineMaxX", 0);
+    const limitY = numField("machineMaxY", 0);
+    const over = [];
+    if (limitX > 0 && stats.maxX > limitX) over.push(`X ${stats.maxX.toFixed(0)} &gt; ${limitX}`);
+    if (limitY > 0 && stats.maxY > limitY) over.push(`Y ${stats.maxY.toFixed(0)} &gt; ${limitY}`);
+    if (!over.length) return "";
+    return `<br><span style="color:#ff3b6b">exceeds machine travel: ${over.join(", ")}</span>`;
 }
 
 function showStats(stats, planned) {
@@ -590,6 +637,7 @@ function showStats(stats, planned) {
         `est. plot time <strong>${minutes < 1 ? "<1" : Math.round(minutes)} min</strong> ` +
         `<span style="color:#52525b">@ ${getFeedRate()} mm/min</span>` +
         (lastRouteGain > 0.001 ? `<br><span style="color:#52525b">2-opt cut travel a further ${(lastRouteGain * 100).toFixed(0)}%</span>` : "") +
+        boundsWarning(stats) +
         (deletedPaths.length ? `<br><span style="color:#52525b">${deletedPaths.length} path(s) deleted by hand</span>` : "");
 }
 
@@ -625,21 +673,50 @@ processBtn.addEventListener("click", () => {
     generateGCode();
 });
 
+function saveFile(text, filename, mime) {
+    const blob = new Blob([text], { type: mime });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+}
+
 document.getElementById("downloadBtn").addEventListener("click", () => {
     if (!gcodeLines || gcodeLines.length === 0) {
         alert("Please generate G-Code first!");
         return;
     }
+    saveFile(gcodeLines.join("\n"), "gcoded.nc", "text/plain");
+});
 
-    const fullGCodeText = gcodeLines.join("\n");
-    const blob = new Blob([fullGCodeText], { type: "text/plain" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "cool.nc";
+// SVG is the interchange format for AxiDraw, Inkscape and friends, so the same plot
+// can go somewhere other than straight down a serial port.
+function buildSvg() {
+    const place = getLayout();
+    const w = place.paperW, h = place.paperH;
+    const out = [
+        `<?xml version="1.0" encoding="UTF-8"?>`,
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">`,
+        `<g fill="none" stroke="#000000" stroke-width="${getPenWidth()}" stroke-linecap="round" stroke-linejoin="round">`
+    ];
+    for (const path of previewPaths) {
+        // SVG measures Y downwards from the top; our millimetres run up from the bottom.
+        const points = path.map(pt => `${pt.x.toFixed(3)},${(h - pt.y).toFixed(3)}`).join(" ");
+        out.push(`<polyline points="${points}"/>`);
+    }
+    out.push("</g>", "</svg>");
+    return out.join("\n");
+}
 
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+document.getElementById("saveSvgBtn").addEventListener("click", () => {
+    if (!previewPaths.length) {
+        alert("Please generate G-Code first!");
+        return;
+    }
+    saveFile(buildSvg(), "gcoded.svg", "image/svg+xml");
 });
 
 function generateGCode() {
@@ -1078,6 +1155,128 @@ function flowFieldPass(layer, spacingPx, scale, isTargetPixel) {
 }
 
 // =========================================================================
+// LOOKS - named presets
+// Presets are pure DATA over the same controls Pro mode exposes, never a separate code
+// path. That is what lets Baby mode hand off to Pro with your values carried over,
+// instead of the two modes drifting apart.
+// =========================================================================
+const LOOKS = {
+    portrait: {
+        hint: "Crosshatched tonal portrait in three shading layers.",
+        settings: { engineMode: "shading", smoothMode: "median", smoothing: "0.25",
+                    gamma: "115", contrast: "10", autoLevels: true, optimizePath: true,
+                    enableOutlineOverlay: false, penDwell: "120" },
+        layers: [{ cutoff: 70, spacing: 0.7, pattern: "crosshatch", a1: 45, a2: 135 },
+                 { cutoff: 140, spacing: 1.2, pattern: "crosshatch", a1: 0, a2: 90 },
+                 { cutoff: 205, spacing: 2.0, pattern: "hatch", a1: 20, a2: 110 }]
+    },
+    sketch: {
+        hint: "Hatching that follows the form, the way pencil shading does.",
+        settings: { engineMode: "shading", smoothMode: "median", smoothing: "0.3",
+                    gamma: "110", contrast: "5", autoLevels: true, optimizePath: true },
+        layers: [{ cutoff: 90, spacing: 0.8, pattern: "flowfield", a1: 45, a2: 135 },
+                 { cutoff: 170, spacing: 1.4, pattern: "flowfield", a1: 45, a2: 135 },
+                 { cutoff: 225, spacing: 2.4, pattern: "flowfield", a1: 45, a2: 135 }]
+    },
+    lineart: {
+        hint: "Outlines only, no fill. Fastest thing here to plot.",
+        settings: { engineMode: "outline", outlineThresh: "128", smoothMode: "median",
+                    smoothing: "0.3", contrast: "25", autoLevels: true }
+    },
+    topographic: {
+        hint: "Nested iso-brightness contours, like a map.",
+        settings: { engineMode: "bw", fillPattern: "contour", bwThresh: "255",
+                    contourLevels: "16", smoothMode: "box", smoothing: "0.4", autoLevels: true }
+    },
+    stipple: {
+        hint: "Dot density follows tone. Slow to plot, lovely up close.",
+        settings: { engineMode: "bw", fillPattern: "stipple", bwThresh: "235",
+                    bwDensity: "0.8", smoothing: "0.2", gamma: "110", autoLevels: true }
+    },
+    oneline: {
+        hint: "One unbroken line through the whole image. The pen never lifts.",
+        settings: { engineMode: "bw", fillPattern: "tsp", bwThresh: "235",
+                    bwDensity: "1.0", smoothing: "0.25", penDwell: "0", autoLevels: true }
+    },
+    poster: {
+        hint: "Coarse, high contrast, quick to plot.",
+        settings: { engineMode: "bw", fillPattern: "crosshatch", bwThresh: "150",
+                    bwDensity: "2.2", contrast: "45", smoothing: "0.35",
+                    enableOutlineOverlay: true, outlineThresh: "110", autoLevels: true }
+    },
+    engraving: {
+        hint: "Very fine dense hatching. Long plot, high detail.",
+        settings: { engineMode: "shading", smoothMode: "median", smoothing: "0.15",
+                    gamma: "105", autoLevels: true },
+        layers: [{ cutoff: 60, spacing: 0.35, pattern: "crosshatch", a1: 45, a2: 135 },
+                 { cutoff: 120, spacing: 0.55, pattern: "crosshatch", a1: 15, a2: 105 },
+                 { cutoff: 180, spacing: 0.85, pattern: "hatch", a1: 75, a2: 165 },
+                 { cutoff: 230, spacing: 1.4, pattern: "hatch", a1: 45, a2: 135 }]
+    }
+};
+
+// Set while a preset is being applied, so the resulting change events don't immediately
+// flip the look back to "Custom".
+let applyingPreset = false;
+
+function applyLook(name) {
+    const look = LOOKS[name];
+    const hint = document.getElementById("lookHint");
+    if (!look) {
+        if (hint) hint.textContent = "Every setting is yours to change.";
+        return;
+    }
+
+    applyingPreset = true;
+    for (const [id, value] of Object.entries(look.settings)) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        if (el.type === "checkbox") el.checked = !!value;
+        else el.value = value;
+    }
+
+    if (look.layers) {
+        layersContainer.innerHTML = "";
+        for (const l of look.layers) createLayerRow(l.cutoff, l.spacing, l.pattern, l.a1, l.a2);
+    }
+
+    if (hint) hint.textContent = look.hint;
+    applyingPreset = false;
+
+    updateUiPanels();
+    refreshTonePreview();
+}
+
+const lookPreset = document.getElementById("lookPreset");
+lookPreset.addEventListener("change", () => applyLook(lookPreset.value));
+
+// Touching any control by hand means this is no longer one of the named looks.
+document.querySelector(".sidebar").addEventListener("input", (e) => {
+    if (applyingPreset) return;
+    if (e.target.id === "lookPreset" || e.target.id === "uiMode") return;
+    if (lookPreset.value !== "custom") {
+        lookPreset.value = "custom";
+        const hint = document.getElementById("lookHint");
+        if (hint) hint.textContent = "Every setting is yours to change.";
+    }
+});
+
+const uiMode = document.getElementById("uiMode");
+function applyUiMode() {
+    document.body.classList.toggle("baby-mode", uiMode.value === "baby");
+}
+uiMode.addEventListener("change", applyUiMode);
+
+// Machine profile decides whether the pen is a servo or a Z axis.
+const machineProfile = document.getElementById("machineProfile");
+function applyMachineProfile() {
+    const zMode = getPenMode();
+    document.getElementById("servoPenBlock").style.display = zMode === "z" ? "none" : "block";
+    document.getElementById("zPenBlock").style.display = zMode === "z" ? "block" : "none";
+}
+machineProfile.addEventListener("change", applyMachineProfile);
+
+// =========================================================================
 // UNIFIED UI SIDEBAR MANAGER
 // =========================================================================
 function updateUiPanels() {
@@ -1244,6 +1443,9 @@ document.getElementById("outlineThresh").addEventListener("change", (e) => {
 });
 
 updateUiPanels();
+applyUiMode();
+applyMachineProfile();
+applyLook(lookPreset.value);
 refreshTonePreview();
 
 // =========================================================================

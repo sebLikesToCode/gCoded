@@ -437,3 +437,70 @@ summary:hover {
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
     font-size: 0.78rem;
 }
+
+/* --- Baby / Pro mode --- */
+body.baby-mode .pro-only { display: none !important; }
+
+.logo-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.logo-row select {
+    width: auto;
+    margin: 0;
+    padding: 6px 10px;
+    font-size: 0.75rem;
+}
+
+.check-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: #e4e4e7;
+    font-weight: bold;
+    margin-top: 10px;
+}
+
+.check-row input[type="checkbox"] {
+    width: auto !important;
+    accent-color: #00f5d4;
+    margin: 0;
+}
+
+.save-row {
+    display: flex;
+    gap: 8px;
+}
+
+.save-row button { flex: 1; }
+
+#lookHint,
+small.hint {
+    display: block;
+    margin-top: 8px;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: #71717a;
+}
+
+.sidebar textarea {
+    width: 100%;
+    background-color: #1a1a1e;
+    border: 1px solid #2d2d34;
+    border-radius: 6px;
+    color: #e4e4e7;
+    padding: 8px 10px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.78rem;
+    resize: vertical;
+    margin-bottom: 10px;
+}
+
+.sidebar textarea:focus {
+    outline: none;
+    border-color: #00f5d4;
+}
