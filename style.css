@@ -1,0 +1,415 @@
+/* =========================================================================
+   GLOBAL STYLES & APPLICATION LAYOUT
+   ========================================================================= */
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: #0b0b0d;
+    color: #e4e4e7;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Master Grid Structure - 720px Ultra-Wide Control Hub Layout */
+.app_container {
+    display: grid;
+    grid-template-columns: 720px 1fr; /* Set to 720px */
+    grid-template-rows: 1fr auto;
+    grid-template-areas:
+        "sidebar preview"
+        "footer preview";
+    height: 100vh;
+    width: 100vw;
+}
+
+/* Sidebar Panel Layout */
+.sidebar {
+    grid-area: sidebar;
+    background-color: #111113;
+    border-right: 1px solid #2d2d34;
+    padding: 32px; /* Open, luxurious padding profile */
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    overflow-y: auto;
+}
+
+.logo {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.5px;
+    margin-bottom: 6px;
+}
+
+.logo span {
+    color: #00f5d4; /* Turquoise Accent */
+    text-shadow: 0 0 15px rgba(0, 245, 212, 0.3);
+}
+
+/* Structural Interface Containers */
+.control-group {
+    background: #1a1a1e;
+    border: 1px solid #2d2d34;
+    border-radius: 8px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.control-group h3 {
+    font-size: 1rem;
+    color: #a1a1aa;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+}
+
+label {
+    font-size: 0.88rem;
+    color: #71717a;
+    margin-top: 2px;
+}
+
+/* Text Inputs and Core Select Menus */
+input[type="text"],
+input[type="number"],
+select {
+    background-color: #0b0b0d;
+    border: 1px solid #3f3f46;
+    color: #ffffff;
+    border-radius: 6px;
+    padding: 14px 18px; /* Roomy, easy-to-click input heights */
+    font-family: inherit;
+    font-size: 1rem;
+    outline: none;
+    width: 100%;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+select:focus {
+    border-color: #00f5d4; /* Turquoise Focus State */
+    box-shadow: 0 0 0 2px rgba(0, 245, 212, 0.15);
+}
+
+input[type="file"] {
+    color: #a1a1aa;
+    font-size: 0.95rem;
+    padding: 8px 0;
+}
+
+/* Primary Action Interface Buttons */
+button {
+    font-family: inherit;
+    font-size: 1.05rem;
+    font-weight: 600;
+    padding: 16px;
+    border-radius: 6px;
+    border: 1px solid #3f3f46;
+    background-color: #1a1a1e;
+    color: #ffffff;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    width: 100%;
+}
+
+button:hover {
+    background-color: #222227;
+    border-color: #00f5d4;
+    color: #00f5d4;
+}
+
+.btn-accent {
+    background-color: #00f5d4;
+    border-color: #00f5d4;
+    color: #0b0b0d;
+}
+
+.btn-accent:hover {
+    background-color: #00d2b4;
+    border-color: #00d2b4;
+    color: #0b0b0d;
+}
+
+/* Machine Toolpath Live Preview Frame */
+.canvas-container {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 20px;
+}
+
+.canvas-container h3 {
+    font-size: 0.9rem;
+    color: #71717a;
+    text-transform: uppercase;
+}
+
+#gcodeCanvas {
+    background-color: #0b0b0d;
+    border: 1px solid #2d2d34;
+    border-radius: 8px;
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+/* Main Interactive Workspace Area */
+.preview-area {
+    grid-area: preview;
+    background-color: #0b0b0d;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    overflow: auto;
+}
+
+#imageCanvas {
+    max-width: 100%;
+    max-height: 100%;
+    box-shadow: 0 30px 40px -5px rgba(0, 0, 0, 0.7);
+    border-radius: 8px;
+    background-color: #1a1a1e;
+}
+
+/* Bottom G-Code Text Log Drawer (Locked to 720px Master Column) */
+.gcode-preveiw-container {
+    grid-area: footer;
+    background-color: #111113;
+    border-top: 1px solid #2d2d34;
+    border-right: 1px solid #2d2d34;
+    width: 720px; /* Aligned directly to master track layout */
+}
+
+summary {
+    padding: 20px 32px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    cursor: pointer;
+    color: #a1a1aa;
+    user-select: none;
+    outline: none;
+}
+
+summary:hover {
+    color: #00f5d4;
+}
+
+.preveiw-content {
+    padding: 0 32px 32px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+#gcodeDisplayBox {
+    background-color: #0b0b0d;
+    border: 1px solid #2d2d34;
+    border-radius: 6px;
+    padding: 16px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.9rem;
+    color: #00f5d4;
+    max-height: 260px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+}
+
+/* =========================================================================
+   GRID-BASED SHADING LAYERS PANEL STYLES (ANTI-SUBPIXEL COLLAPSE)
+   ========================================================================= */
+
+#shadingOptionsPanel {
+    background: #1a1a1e !important;
+    border-radius: 8px !important;
+    padding: 20px !important;
+    margin-top: 16px !important;
+    border: 1px solid #2d2d34 !important;
+    box-sizing: border-box !important;
+}
+
+#shadingOptionsPanel h3 {
+    margin-top: 0 !important;
+    margin-bottom: 16px !important;
+    font-size: 15px !important;
+    color: #e4e4e7 !important;
+    border-bottom: 1px solid #2d2d34 !important;
+    padding-bottom: 10px !important;
+}
+
+#layersContainer {
+    max-height: 320px !important;
+    overflow-y: auto !important;
+    padding-right: 4px !important;
+    display: block !important;
+}
+
+#layersContainer input,
+#layersContainer select {
+    box-sizing: border-box !important;
+}
+
+/* Expanded Shading Layer Grid Architecture for massive 720px columns */
+.layer-row {
+    background: #222227 !important;
+    border: 1px solid #2d2d34 !important;
+    border-radius: 6px !important;
+    padding: 12px 18px !important;
+
+    display: grid !important;
+    grid-template-columns: max-content 80px max-content 80px max-content 1fr max-content !important;
+    align-items: center !important;
+    column-gap: 16px !important;
+    row-gap: 0 !important;
+
+    margin-bottom: 12px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.layer-row label {
+    font-size: 12px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    color: #a1a1aa !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+}
+
+.layer-row input[type="number"],
+.layer-row select {
+    background: #111113 !important;
+    border: 1px solid #3f3f46 !important;
+    color: #ffffff !important;
+    border-radius: 4px !important;
+    padding: 6px 10px !important;
+    font-family: inherit !important;
+    font-size: 14px !important;
+    outline: none !important;
+    height: 36px !important;
+    width: 100% !important;
+}
+
+.layer-row input:focus,
+.layer-row select:focus {
+    border-color: #00f5d4 !important;
+}
+
+.layer-row input[type="number"]::-webkit-inner-spin-button,
+.layer-row input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none !important;
+    margin: 0 !important;
+}
+
+.layer-row input[type="number"] {
+    -moz-appearance: textfield !important;
+}
+
+#addLayerBtn {
+    width: 100% !important;
+    background: transparent !important;
+    border: 1px dashed #3f3f46 !important;
+    color: #a1a1aa !important;
+    padding: 12px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    margin-top: 14px !important;
+    box-sizing: border-box !important;
+    transition: all 0.15s ease !important;
+}
+
+#addLayerBtn:hover {
+    background: #222227 !important;
+    border-color: #00f5d4 !important;
+    color: #00f5d4 !important;
+}
+
+.remove-layer-btn {
+    background: transparent !important;
+    border: none !important;
+    color: #ef4444 !important;
+    font-size: 16px !important;
+    font-weight: bold !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    cursor: pointer !important;
+    height: 32px !important;
+    width: 32px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 6px !important;
+    transition: background 0.2s !important;
+}
+
+.remove-layer-btn:hover {
+    background: rgba(239, 68, 68, 0.2) !important;
+}
+#gcodeStats {
+    font-size: 0.75rem;
+    color: #71717a;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    line-height: 1.6;
+    padding-top: 4px;
+}
+
+#gcodeStats strong {
+    color: #00f5d4;
+    font-weight: 600;
+}
+
+#pathEditRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-top: 6px;
+}
+
+#pathEditHint {
+    font-size: 0.72rem;
+    color: #52525b;
+    flex: 1 1 100%;
+}
+
+#pathEditRow button {
+    flex: 0 0 auto;
+    width: auto;
+    padding: 5px 12px;
+    font-size: 0.72rem;
+    margin: 0;
+}
+
+#pathEditRow button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+#gcodeCanvas.is-hovering-path {
+    cursor: pointer;
+}
+
+.path-edit-spacer { flex: 1 1 auto; }
+
+#zoomLevel {
+    font-size: 0.72rem;
+    color: #71717a;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    min-width: 46px;
+}
+
+#gcodeCanvas { touch-action: none; }
+#gcodeCanvas.is-panning { cursor: grabbing; }

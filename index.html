@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>gCoded</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app_container">
+    <aside class="sidebar">
+        <h1 class="logo">g<span>Coded</span></h1>
+
+        <div class="control-group">
+            <h3>1. Select Image</h3>
+            <input type="file" id="imageLoader" accept="image/*">
+        </div>
+
+        <div class="control-group">
+            <h3>2. Machine Settings</h3>
+            <label>Pen Down Command</label>
+            <input type="text" id="penDownCmd" value="M3 S90">
+
+            <label>Pen Up Command</label>
+            <input type="text" id="penUpCmd" value="M3 S0">
+
+            <label>Draw Feedrate (mm/min)</label>
+            <input type="number" id="feedRate" value="1500" min="1">
+
+            <label>Paper Size</label>
+            <select id="paperPreset">
+                <option value="210x297">A4 Portrait (210 x 297)</option>
+                <option value="297x210">A4 Landscape (297 x 210)</option>
+                <option value="148x210">A5 Portrait (148 x 210)</option>
+                <option value="210x148">A5 Landscape (210 x 148)</option>
+                <option value="297x420">A3 Portrait (297 x 420)</option>
+                <option value="420x297">A3 Landscape (420 x 297)</option>
+                <option value="215.9x279.4">US Letter (215.9 x 279.4)</option>
+                <option value="100x100" selected>Square (100 x 100)</option>
+                <option value="custom">Custom</option>
+            </select>
+
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+                <div style="flex: 1;">
+                    <label>Paper Width (mm)</label>
+                    <input type="number" id="paperWidth" value="100" min="1" step="1">
+                </div>
+                <div style="flex: 1;">
+                    <label>Paper Height (mm)</label>
+                    <input type="number" id="paperHeight" value="100" min="1" step="1">
+                </div>
+            </div>
+
+            <label>Margin (mm)</label>
+            <input type="number" id="margin" value="0" min="0" step="1">
+
+            <label>Pen Width (mm)</label>
+            <input type="number" id="penWidth" value="0.4" min="0.01" step="0.05">
+
+            <label>Pen Dwell (ms)</label>
+            <input type="number" id="penDwell" value="120" min="0" step="10">
+        </div>
+
+        <div class="control-group">
+            <h3>3. Application Settings</h3>
+
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #e4e4e7; font-weight: bold;">
+                <input type="checkbox" id="optimizePath" checked style="width: auto !important; accent-color: #00f5d4;">
+                Deep path optimization (2-opt)
+            </label>
+
+            <label>Smoothing (mm)</label>
+            <input type="number" id="smoothing" value="0.2" min="0" step="0.05">
+
+            <label>Engine Mode</label>
+            <select id="engineMode">
+                <option value="bw">Black & White (Single Threshold)</option>
+                <option value="shading">Shading (Multiple Thresholds)</option>
+                <option value="outline">Outline (Standalone Trace)</option>
+            </select>
+
+            <div id="globalPatternContainer" style="margin-top: 10px;">
+                <label>Fill Pattern Style</label>
+                <select id="fillPattern">
+                    <option value="crosshatch" selected>Cross-Hatch Grid</option>
+                    <option value="hatch">Linear Hatch</option>
+                    <option value="diagonal">Diagonal</option>
+                    <option value="concentric">Concentric / Spiral</option>
+                </select>
+            </div>
+
+            <div id="globalAngleContainer" style="display: block; margin-top: 10px; padding-left: 10px; border-left: 2px solid #00f5d4;">
+                <div id="angle1Block">
+                    <label>Line Angle 1 (°)</label>
+                    <input type="number" id="fillAngle1" value="45" min="0" max="360">
+                </div>
+                <div id="angle2Block" style="margin-top: 8px;">
+                    <label>Line Angle 2 (°)</label>
+                    <input type="number" id="fillAngle2" value="135" min="0" max="360">
+                </div>
+            </div>
+
+            <div id="outlineOverlayContainer" style="margin-top: 12px; margin-bottom: 8px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #e4e4e7; font-weight: bold;">
+                    <input type="checkbox" id="enableOutlineOverlay" style="width: auto !important; accent-color: #00f5d4;">
+                    Overlay Outline Pass on top
+                </label>
+            </div>
+
+            <div id="outlineOptionsPanel" style="display: none; margin-bottom: 15px; margin-top: 10px;">
+                <label>Outline Threshold (0-255)</label>
+                <input type="text" id="outlineThresh" value="128" min="0" max="255">
+            </div>
+
+            <div id="bwOptionsPanel" style="margin-top: 10px;">
+                <label>Threshold (0-255)</label>
+                <input type="text" id="bwThresh" value="210" min="0" max="255">
+                <label>Line Spacing (mm)</label>
+                <input type="number" id="bwDensity" value="1.5" min="0.05" step="0.1">
+            </div>
+
+            <div id="shadingOptionsPanel" style="display: none; margin-top: 10px;">
+                <h3 style="margin-bottom: 10px;">Custom Shading Layers</h3>
+                <div id="layersContainer"></div>
+                <button type="button" id="addLayerBtn" style="margin-top: 10px;">+ Add Shading Layer</button>
+            </div>
+        </div>
+
+        <button id="processBtn" class="btn-accent">Generate G-Code</button>
+        <button id="downloadBtn">Save G-Code</button>
+
+        <div class="canvas-container">
+            <h3>Live Machine Toolpath Preview</h3>
+            <canvas id="gcodeCanvas"></canvas>
+            <div id="gcodeStats">Click "Generate G-Code" to see plot statistics.</div>
+            <div id="pathEditRow">
+                <span id="pathEditHint">Scroll to zoom &middot; drag to pan &middot; click a path to delete it.</span>
+                <button type="button" id="zoomOutBtn" title="Zoom out">&minus;</button>
+                <button type="button" id="zoomInBtn" title="Zoom in">+</button>
+                <button type="button" id="zoomFitBtn" title="Reset zoom">Fit</button>
+                <span id="zoomLevel">100%</span>
+                <span class="path-edit-spacer"></span>
+                <button type="button" id="undoDeleteBtn" disabled>Undo</button>
+                <button type="button" id="restorePathsBtn" disabled>Restore all</button>
+            </div>
+        </div>
+    </aside>
+
+    <main class="preview-area">
+        <canvas id="imageCanvas"></canvas>
+    </main>
+
+    <details class="gcode-preveiw-container">
+        <summary>View G-Code</summary>
+        <div class="preveiw-content">
+            <small style="color: #666">First 100 Lines</small>
+            <pre id="gcodeDisplayBox">Click "Generate G-Code" to see preview...</pre>
+        </div>
+    </details>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
