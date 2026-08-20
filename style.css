@@ -413,3 +413,27 @@ summary:hover {
 
 #gcodeCanvas { touch-action: none; }
 #gcodeCanvas.is-panning { cursor: grabbing; }
+
+#histogramCanvas {
+    width: 100%;
+    height: 64px;
+    display: block;
+    background-color: #0b0b0d;
+    border: 1px solid #2d2d34;
+    border-radius: 6px;
+    margin-bottom: 12px;
+}
+
+#toneGroup input[type="range"] {
+    width: 100%;
+    accent-color: #00f5d4;
+    padding: 0;
+    margin-bottom: 10px;
+}
+
+#toneGroup label .val {
+    float: right;
+    color: #00f5d4;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.78rem;
+}

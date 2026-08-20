@@ -61,8 +61,38 @@
             <input type="number" id="penDwell" value="120" min="0" step="10">
         </div>
 
+        <div class="control-group" id="toneGroup">
+            <h3>3. Image Adjustments</h3>
+
+            <canvas id="histogramCanvas" title="Tone distribution after adjustments. Markers show where your thresholds sit."></canvas>
+
+            <label>Brightness <span class="val" id="brightnessVal">0</span></label>
+            <input type="range" id="brightness" min="-100" max="100" value="0">
+
+            <label>Contrast <span class="val" id="contrastVal">0</span></label>
+            <input type="range" id="contrast" min="-100" max="100" value="0">
+
+            <label>Gamma <span class="val" id="gammaVal">1.00</span></label>
+            <input type="range" id="gamma" min="10" max="300" value="100">
+
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #e4e4e7;">
+                <input type="checkbox" id="autoLevels" style="width: auto !important; accent-color: #00f5d4;">
+                Auto levels (stretch to full range)
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #e4e4e7;">
+                <input type="checkbox" id="invertImage" style="width: auto !important; accent-color: #00f5d4;">
+                Invert (for light pen on dark paper)
+            </label>
+
+            <label>Noise Removal</label>
+            <select id="smoothMode">
+                <option value="box" selected>Blur (softens edges)</option>
+                <option value="median">Median (keeps edges crisp)</option>
+            </select>
+        </div>
+
         <div class="control-group">
-            <h3>3. Application Settings</h3>
+            <h3>4. Application Settings</h3>
 
             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #e4e4e7; font-weight: bold;">
                 <input type="checkbox" id="optimizePath" checked style="width: auto !important; accent-color: #00f5d4;">

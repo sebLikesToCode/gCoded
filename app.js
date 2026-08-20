@@ -88,6 +88,35 @@ function getDwellSeconds() {
     return isNaN(ms) || ms <= 0 ? 0 : ms / 1000;
 }
 
+function getBrightnessAdj() {
+    return parseFloat(document.getElementById("brightness").value) || 0;
+}
+
+function getContrastAdj() {
+    return parseFloat(document.getElementById("contrast").value) || 0;
+}
+
+// Stored as 10..300 so it can live on an integer slider.
+function getGamma() {
+    const raw = parseFloat(document.getElementById("gamma").value);
+    return isNaN(raw) || raw <= 0 ? 1 : raw / 100;
+}
+
+function isInverted() {
+    const el = document.getElementById("invertImage");
+    return !!(el && el.checked);
+}
+
+function isAutoLevels() {
+    const el = document.getElementById("autoLevels");
+    return !!(el && el.checked);
+}
+
+function getSmoothMode() {
+    const el = document.getElementById("smoothMode");
+    return el ? el.value : "box";
+}
+
 function getSmoothing() {
     const mm = parseFloat(document.getElementById("smoothing").value);
     return isNaN(mm) || mm < 0 ? 0 : mm;
@@ -130,6 +159,52 @@ function boxBlur(src, w, h, radius) {
     return out;
 }
 
+// Median filter. Unlike a blur it removes grain without softening edges, which matters
+// because every engine here thresholds - a softened edge becomes a thick transition band.
+function medianFilter(src, w, h, radius) {
+    const out = new Uint8ClampedArray(w * h);
+    const window = [];
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            window.length = 0;
+            for (let dy = -radius; dy <= radius; dy++) {
+                const sy = Math.min(h - 1, Math.max(0, y + dy));
+                for (let dx = -radius; dx <= radius; dx++) {
+                    const sx = Math.min(w - 1, Math.max(0, x + dx));
+                    window.push(src[sy * w + sx]);
+                }
+            }
+            window.sort((a, b) => a - b);
+            out[y * w + x] = window[window.length >> 1];
+        }
+    }
+    return out;
+}
+
+// Thresholds are absolute numbers, so they only mean something relative to the image's
+// actual tonal range. This maps tone before any engine looks at it.
+function buildToneLut(loInput, hiInput) {
+    const brightness = getBrightnessAdj();
+    const contrast = getContrastAdj();
+    const gamma = getGamma();
+    const invert = isInverted();
+    // Standard contrast curve, pivoting about mid grey.
+    const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+
+    const lut = new Uint8ClampedArray(256);
+    for (let i = 0; i < 256; i++) {
+        let v = i;
+        if (hiInput > loInput) v = ((v - loInput) / (hiInput - loInput)) * 255;
+        v = Math.max(0, Math.min(255, v));
+        v += brightness * 2.55;
+        v = factor * (v - 128) + 128;
+        v = Math.max(0, Math.min(255, v));
+        v = 255 * Math.pow(v / 255, 1 / gamma);
+        lut[i] = invert ? 255 - v : v;
+    }
+    return lut;
+}
+
 function buildBrightnessMap() {
     const w = canvas.width, h = canvas.height;
     const map = new Uint8ClampedArray(w * h);
@@ -137,9 +212,108 @@ function buildBrightnessMap() {
         const idx = i * 4;
         map[i] = (imgPixels[idx] + imgPixels[idx + 1] + imgPixels[idx + 2]) / 3;
     }
+
+    // Auto levels: find the real range, ignoring the extreme 0.5% at each end so a few
+    // stray black or blown-out pixels don't waste the whole scale.
+    let lo = 0, hi = 255;
+    if (isAutoLevels()) {
+        const counts = new Uint32Array(256);
+        for (let i = 0; i < map.length; i++) counts[map[i]]++;
+        const clip = Math.floor(map.length * 0.005);
+        let seen = 0;
+        for (let i = 0; i < 256; i++) { seen += counts[i]; if (seen > clip) { lo = i; break; } }
+        seen = 0;
+        for (let i = 255; i >= 0; i--) { seen += counts[i]; if (seen > clip) { hi = i; break; } }
+        if (hi <= lo) { lo = 0; hi = 255; }
+    }
+
+    const lut = buildToneLut(lo, hi);
+    for (let i = 0; i < map.length; i++) map[i] = lut[map[i]];
+
     // Smoothing is specified in mm so it means the same thing at any input resolution.
     const radius = Math.round(getSmoothing() / getScale());
-    return radius >= 1 ? boxBlur(map, w, h, radius) : map;
+    if (radius < 1) return map;
+    return getSmoothMode() === "median"
+        ? medianFilter(map, w, h, Math.min(radius, 2))
+        : boxBlur(map, w, h, radius);
+}
+
+// =========================================================================
+// HISTOGRAM
+// Shows the tone distribution AFTER adjustments, with the active thresholds drawn on
+// it - so it is visible why one image needs a cutoff of 210 and another needs 90.
+// =========================================================================
+function drawHistogram() {
+    const hCanvas = document.getElementById("histogramCanvas");
+    if (!hCanvas) return;
+    const hCtx = hCanvas.getContext("2d");
+
+    const dpr = window.devicePixelRatio || 1;
+    const cssWidth = hCanvas.clientWidth || 300;
+    hCanvas.width = Math.round(cssWidth * dpr);
+    hCanvas.height = Math.round(64 * dpr);
+
+    hCtx.fillStyle = "#0b0b0d";
+    hCtx.fillRect(0, 0, hCanvas.width, hCanvas.height);
+
+    if (!brightnessMap) {
+        hCtx.fillStyle = "#3f3f46";
+        hCtx.font = `${11 * dpr}px ui-monospace, monospace`;
+        hCtx.fillText("load an image", 8 * dpr, 36 * dpr);
+        return;
+    }
+
+    const counts = new Uint32Array(256);
+    for (let i = 0; i < brightnessMap.length; i++) counts[brightnessMap[i]]++;
+    let peak = 0;
+    for (let i = 0; i < 256; i++) if (counts[i] > peak) peak = counts[i];
+    if (!peak) return;
+
+    const barW = hCanvas.width / 256;
+    hCtx.fillStyle = "#3f3f46";
+    for (let i = 0; i < 256; i++) {
+        // Square root keeps small but meaningful populations visible next to a huge peak.
+        const barH = Math.sqrt(counts[i] / peak) * hCanvas.height;
+        hCtx.fillRect(i * barW, hCanvas.height - barH, Math.ceil(barW), barH);
+    }
+
+    hCtx.strokeStyle = "#00f5d4";
+    hCtx.lineWidth = Math.max(1, dpr);
+    for (const cutoff of activeThresholds()) {
+        const x = (cutoff / 255) * hCanvas.width;
+        hCtx.beginPath();
+        hCtx.moveTo(x, 0);
+        hCtx.lineTo(x, hCanvas.height);
+        hCtx.stroke();
+    }
+}
+
+// Whichever cutoffs the current mode will actually use.
+function activeThresholds() {
+    const mode = engineMode.value;
+    if (mode === "outline") return [parseInt(document.getElementById("outlineThresh").value) || 128];
+    if (mode === "shading") {
+        return [...document.querySelectorAll(".layer-row")]
+            .map(row => parseInt(row.querySelector(".layer-cutoff").value) || 0);
+    }
+    const list = [parseInt(document.getElementById("bwThresh").value) || 0];
+    if (enableOutlineCheckbox && enableOutlineCheckbox.checked) {
+        list.push(parseInt(document.getElementById("outlineThresh").value) || 128);
+    }
+    return list;
+}
+
+// Recompute tone and redraw the histogram without regenerating the whole plot.
+function refreshTonePreview() {
+    ["brightness", "contrast", "gamma"].forEach(id => {
+        const el = document.getElementById(id + "Val");
+        if (!el) return;
+        el.textContent = id === "gamma" ? getGamma().toFixed(2) : document.getElementById(id).value;
+    });
+    if (!imgPixels) { drawHistogram(); return; }
+    layout = computeLayout();
+    brightnessMap = buildBrightnessMap();
+    drawHistogram();
 }
 
 // RDP is recursive; chunk very long sampled paths so deep strokes can't blow the stack.
@@ -434,6 +608,7 @@ imageLoader.addEventListener('change', (e) => {
             const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             imgPixels = imgData.data;
 
+            refreshTonePreview();
             console.log("Image Loaded Successfully!");
         };
         img.src = event.target.result;
@@ -473,6 +648,7 @@ function generateGCode() {
     collectedStrokes = [];
     layout = computeLayout();
     brightnessMap = buildBrightnessMap();
+    drawHistogram();
 
     let myThresholds = [];
     let outlineThreshold = parseInt(document.getElementById("outlineThresh").value) || 128;
@@ -698,6 +874,12 @@ paperPreset.addEventListener("change", () => {
     });
 });
 
+["brightness", "contrast", "gamma", "autoLevels", "invertImage", "smoothMode", "smoothing"]
+    .forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener("input", refreshTonePreview);
+    });
+
 engineMode.addEventListener("change", updateUiPanels);
 fillPattern.addEventListener("change", updateUiPanels);
 enableOutlineCheckbox.addEventListener("change", updateUiPanels);
@@ -795,6 +977,7 @@ document.getElementById("outlineThresh").addEventListener("change", (e) => {
 });
 
 updateUiPanels();
+refreshTonePreview();
 
 // =========================================================================
 // RDP VECTOR OUTLINE GENERATION ENGINE
