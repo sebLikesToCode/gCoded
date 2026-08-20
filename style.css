@@ -248,11 +248,10 @@ summary:hover {
     padding-bottom: 10px !important;
 }
 
+/* No inner scroll region: the sidebar already scrolls, and nesting one inside it
+   clipped the third layer and put a scrollbar in the middle of the panel. */
 #layersContainer {
-    max-height: 320px !important;
-    overflow-y: auto !important;
-    padding-right: 4px !important;
-    display: block !important;
+    display: block;
 }
 
 #layersContainer input,
@@ -262,58 +261,70 @@ summary:hover {
 
 /* Expanded Shading Layer Grid Architecture for massive 720px columns */
 .layer-row {
-    background: #222227 !important;
-    border: 1px solid #2d2d34 !important;
-    border-radius: 6px !important;
-    padding: 12px 18px !important;
+    background: #222227;
+    border: 1px solid #2d2d34;
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    width: 100%;
+    box-sizing: border-box;
 
-    display: grid !important;
-    grid-template-columns: max-content 80px max-content 80px max-content 1fr max-content !important;
-    align-items: center !important;
-    column-gap: 16px !important;
-    row-gap: 0 !important;
-
-    margin-bottom: 12px !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
+    /* Two columns of stacked label+field blocks. Each field carries its own wrapper,
+       so adding a field can't shuffle the others into the wrong grid column. */
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 12px;
+    align-items: start;
 }
 
+.layer-head {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.layer-head strong {
+    color: #00f5d4;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.layer-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.layer-field.layer-span { grid-column: 1 / -1; }
+
 .layer-row label {
-    font-size: 12px !important;
-    text-transform: uppercase !important;
-    letter-spacing: 1px !important;
-    color: #a1a1aa !important;
-    margin: 0 !important;
-    white-space: nowrap !important;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #a1a1aa;
+    margin: 0;
 }
 
 .layer-row input[type="number"],
 .layer-row select {
-    background: #111113 !important;
-    border: 1px solid #3f3f46 !important;
-    color: #ffffff !important;
-    border-radius: 4px !important;
-    padding: 6px 10px !important;
-    font-family: inherit !important;
-    font-size: 14px !important;
-    outline: none !important;
-    height: 36px !important;
-    width: 100% !important;
+    background: #111113;
+    border: 1px solid #3f3f46;
+    color: #ffffff;
+    border-radius: 4px;
+    padding: 9px 10px;
+    font-family: inherit;
+    font-size: 0.88rem;
+    outline: none;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .layer-row input:focus,
 .layer-row select:focus {
-    border-color: #00f5d4 !important;
-}
-
-.layer-row input[type="number"]::-webkit-inner-spin-button,
-.layer-row input[type="number"]::-webkit-outer-spin-button {
-    -webkit-appearance: none !important;
-    margin: 0 !important;
-}
-
-.layer-row input[type="number"] {
-    -moz-appearance: textfield !important;
+    border-color: #00f5d4;
 }
 
 #addLayerBtn {
@@ -503,4 +514,36 @@ small.hint {
 .sidebar textarea:focus {
     outline: none;
     border-color: #00f5d4;
+}
+
+/* Native number spinners render as bright boxes against this dark theme. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+label { display: block; }
+
+input[type="file"]::file-selector-button {
+    background-color: #1a1a1e;
+    border: 1px solid #3f3f46;
+    color: #e4e4e7;
+    border-radius: 6px;
+    padding: 9px 16px;
+    margin-right: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+    transition: all 0.15s ease;
+}
+
+input[type="file"]::file-selector-button:hover {
+    border-color: #00f5d4;
+    color: #00f5d4;
 }

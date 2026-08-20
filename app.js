@@ -1355,43 +1355,47 @@ const addLayerBtn = document.getElementById("addLayerBtn");
 function createLayerRow(cutoffVal = 128, spacingVal = 1.5, patternVal = "crosshatch", angle1Val = 45, angle2Val = 135) {
     const row = document.createElement("div");
     row.className = "layer-row";
-    row.style.borderLeft = "2px solid #00f5d4";
-    row.style.paddingLeft = "10px";
-    row.style.marginBottom = "15px";
 
+    // Each field is wrapped, so the grid in style.css places whole label+input blocks
+    // rather than depending on the order of loose children.
     row.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-            <strong style="color: #00f5d4; font-size: 0.85em; text-transform: uppercase;">Layer Params</strong>
-            <button type="button" class="remove-layer-btn" style="color: red; border: none; background: none; cursor: pointer; font-weight: bold;">X</button>
+        <div class="layer-head">
+            <strong>Layer</strong>
+            <button type="button" class="remove-layer-btn" title="Remove this layer">&times;</button>
         </div>
-        
-        <label>Threshold (0-255)</label>
-        <input type="number" class="layer-cutoff" value="${cutoffVal}" min="0" max="255">
-        
-        <label>Line Spacing (mm)</label>
-        <input type="number" class="layer-spacing" value="${spacingVal}" min="0.05" step="0.1">
 
-        <label>Pattern Type</label>
-        <select class="layer-pattern">
-            <option value="crosshatch" ${patternVal === 'crosshatch' ? 'selected' : ''}>Cross-Hatch</option>
-            <option value="hatch" ${patternVal === 'hatch' ? 'selected' : ''}>Hatch</option>
-            <option value="diagonal" ${patternVal === 'diagonal' ? 'selected' : ''}>Diagonal</option>
-            <option value="concentric" ${patternVal === 'concentric' ? 'selected' : ''}>Concentric / Spiral</option>
-            <option value="flowfield" ${patternVal === 'flowfield' ? 'selected' : ''}>Flow Field</option>
-            <option value="contour" ${patternVal === 'contour' ? 'selected' : ''}>Topographic Contours</option>
-            <option value="stipple" ${patternVal === 'stipple' ? 'selected' : ''}>Stipple Dots</option>
-            <option value="tsp" ${patternVal === 'tsp' ? 'selected' : ''}>One Continuous Line</option>
-        </select>
+        <div class="layer-field">
+            <label>Threshold</label>
+            <input type="number" class="layer-cutoff" value="${cutoffVal}" min="0" max="255">
+        </div>
 
-        <div class="layer-angles-div" style="margin-top: 5px;">
-            <div class="l-angle1-block">
-                <label>Angle 1 (°)</label>
-                <input type="number" class="layer-angle1" value="${angle1Val}" min="0" max="360">
-            </div>
-            <div class="l-angle2-block" style="display: ${patternVal === 'crosshatch' ? 'block' : 'none'}; margin-top: 5px;">
-                <label>Angle 2 (°)</label>
-                <input type="number" class="layer-angle2" value="${angle2Val}" min="0" max="360">
-            </div>
+        <div class="layer-field">
+            <label>Spacing (mm)</label>
+            <input type="number" class="layer-spacing" value="${spacingVal}" min="0.05" step="0.1">
+        </div>
+
+        <div class="layer-field layer-span">
+            <label>Pattern</label>
+            <select class="layer-pattern">
+                <option value="crosshatch" ${patternVal === 'crosshatch' ? 'selected' : ''}>Cross-Hatch</option>
+                <option value="hatch" ${patternVal === 'hatch' ? 'selected' : ''}>Hatch</option>
+                <option value="diagonal" ${patternVal === 'diagonal' ? 'selected' : ''}>Diagonal</option>
+                <option value="concentric" ${patternVal === 'concentric' ? 'selected' : ''}>Concentric / Spiral</option>
+                <option value="flowfield" ${patternVal === 'flowfield' ? 'selected' : ''}>Flow Field</option>
+                <option value="contour" ${patternVal === 'contour' ? 'selected' : ''}>Topographic Contours</option>
+                <option value="stipple" ${patternVal === 'stipple' ? 'selected' : ''}>Stipple Dots</option>
+                <option value="tsp" ${patternVal === 'tsp' ? 'selected' : ''}>One Continuous Line</option>
+            </select>
+        </div>
+
+        <div class="layer-field l-angle1-block">
+            <label>Angle 1</label>
+            <input type="number" class="layer-angle1" value="${angle1Val}" min="0" max="360">
+        </div>
+
+        <div class="layer-field l-angle2-block">
+            <label>Angle 2</label>
+            <input type="number" class="layer-angle2" value="${angle2Val}" min="0" max="360">
         </div>
     `;
 
@@ -1402,8 +1406,8 @@ function createLayerRow(cutoffVal = 128, spacingVal = 1.5, patternVal = "crossha
     function adjustRowAngleVisibility() {
         const p = patternSelect.value;
         if (p === "hatch" || p === "crosshatch" || p === "flowfield") {
-            angle1Block.style.display = "block";
-            angle2Block.style.display = (p === "crosshatch") ? "block" : "none";
+            angle1Block.style.display = "flex";
+            angle2Block.style.display = (p === "crosshatch") ? "flex" : "none";
         } else {
             angle1Block.style.display = "none";
             angle2Block.style.display = "none";
