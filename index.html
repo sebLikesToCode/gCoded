@@ -116,7 +116,16 @@
                     <option value="hatch">Linear Hatch</option>
                     <option value="diagonal">Diagonal</option>
                     <option value="concentric">Concentric / Spiral</option>
+                    <option value="flowfield">Flow Field (follows image structure)</option>
+                    <option value="contour">Topographic Contours</option>
+                    <option value="stipple">Stipple Dots</option>
+                    <option value="tsp">One Continuous Line (TSP)</option>
                 </select>
+
+                <div id="contourLevelsBlock" style="display: none; margin-top: 10px;">
+                    <label>Contour Levels</label>
+                    <input type="number" id="contourLevels" value="12" min="1" max="64">
+                </div>
             </div>
 
             <div id="globalAngleContainer" style="display: block; margin-top: 10px; padding-left: 10px; border-left: 2px solid #00f5d4;">

@@ -338,7 +338,7 @@ let collectedStrokes = [];
 
 // The ONLY entry point for engine output. Takes a densely sampled path in mm and
 // collapses it to real geometry.
-function emitStroke(path) {
+function emitStroke(path, minLengthMm) {
     if (path.length < 2) return;
 
     const simplified = simplifyLarge(path, 0.05);
@@ -356,7 +356,7 @@ function emitStroke(path) {
     for (let i = 1; i < simplified.length; i++) {
         length += Math.hypot(simplified[i].x - simplified[i - 1].x, simplified[i].y - simplified[i - 1].y);
     }
-    if (length < MIN_STROKE_MM) return;
+    if (length < (minLengthMm === undefined ? MIN_STROKE_MM : minLengthMm)) return;
 
     collectedStrokes.push(simplified);
 }
@@ -739,6 +739,42 @@ function executeAdvancedPass(thresholdList, activeIndex) {
         }
     }
 
+    // --- TOPOGRAPHIC ISO-CONTOURS ---
+    if (layer.pattern === "contour") {
+        const levels = getContourLevels();
+        for (let i = 1; i <= levels; i++) {
+            const level = minBright + ((maxBright - minBright) * i) / (levels + 1);
+            for (const path of contoursToMm(traceIsoContours(level), scale)) emitStroke(path);
+        }
+        return;
+    }
+
+    // --- STIPPLE DOTS ---
+    if (layer.pattern === "stipple") {
+        // A dot is plotted as a dash one pen-width long; anything shorter is a pen
+        // touch the machine may not register.
+        const dash = Math.max(0.12, getPenWidth() * 0.6);
+        for (const dot of stipplePoints(spacing, minBright, maxBright)) {
+            const x = dot.x * scale, y = (canvas.height - dot.y) * scale;
+            emitStroke([{ x: x - dash / 2, y: y }, { x: x + dash / 2, y: y }], 0);
+        }
+        return;
+    }
+
+    // --- ONE CONTINUOUS LINE THROUGH EVERY DOT ---
+    if (layer.pattern === "tsp") {
+        const dots = stipplePoints(spacing, minBright, maxBright)
+            .map(d => ({ x: d.x * scale, y: (canvas.height - d.y) * scale }));
+        if (dots.length >= 2) emitStroke(tspTour(dots), 0);
+        return;
+    }
+
+    // --- FLOW FIELD ---
+    if (layer.pattern === "flowfield") {
+        flowFieldPass(layer, spacing, scale, isTargetPixel);
+        return;
+    }
+
     // --- 1. CONCENTRIC SPIRAL SUB-ENGINE ---
     if (layer.pattern === "concentric") {
         let cx = canvas.width / 2;
@@ -818,6 +854,230 @@ function executeAdvancedPass(thresholdList, activeIndex) {
 }
 
 // =========================================================================
+// STIPPLING
+// Error diffusion over a coarse grid: each cell's wanted ink coverage is rounded to a
+// dot or no dot and the rounding error is pushed to neighbours, so dot DENSITY tracks
+// tone without the dots landing on a visible lattice.
+// =========================================================================
+function getContourLevels() {
+    const n = parseInt(document.getElementById("contourLevels").value);
+    return isNaN(n) ? 12 : Math.max(1, Math.min(64, n));
+}
+
+// Deterministic jitter, so regenerating the same image gives the same plot.
+function jitter(c, r) {
+    const v = Math.sin(c * 127.1 + r * 311.7) * 43758.5453;
+    return v - Math.floor(v) - 0.5;
+}
+
+function stipplePoints(spacingPx, minBright, maxBright) {
+    const w = canvas.width, h = canvas.height;
+    const cell = Math.max(1, spacingPx);
+    const cols = Math.max(1, Math.floor(w / cell));
+    const rows = Math.max(1, Math.floor(h / cell));
+
+    // Wanted ink coverage per cell, 0..1, counting only pixels inside this layer's band.
+    const want = new Float32Array(cols * rows);
+    for (let r = 0; r < rows; r++) {
+        const y0 = Math.floor(r * cell), y1 = Math.min(h, Math.floor((r + 1) * cell));
+        for (let c = 0; c < cols; c++) {
+            const x0 = Math.floor(c * cell), x1 = Math.min(w, Math.floor((c + 1) * cell));
+            let darkness = 0;
+            for (let y = y0; y < y1; y++) {
+                for (let x = x0; x < x1; x++) {
+                    const v = brightnessMap[y * w + x];
+                    if (v >= minBright && v <= maxBright) darkness += (255 - v) / 255;
+                }
+            }
+            const area = Math.max(1, (x1 - x0) * (y1 - y0));
+            want[r * cols + c] = darkness / area;
+        }
+    }
+
+    const points = [];
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            const i = r * cols + c;
+            const on = want[i] > 0.5 ? 1 : 0;
+            const err = want[i] - on;
+            if (on) {
+                points.push({
+                    x: (c + 0.5 + jitter(c, r) * 0.7) * cell,
+                    y: (r + 0.5 + jitter(r, c) * 0.7) * cell
+                });
+            }
+            // Floyd-Steinberg weights.
+            if (c + 1 < cols) want[i + 1] += err * 7 / 16;
+            if (r + 1 < rows) {
+                if (c > 0) want[i + cols - 1] += err * 3 / 16;
+                want[i + cols] += err * 5 / 16;
+                if (c + 1 < cols) want[i + cols + 1] += err * 1 / 16;
+            }
+        }
+    }
+    return points;
+}
+
+// =========================================================================
+// TSP TOUR - one unbroken line through every stipple dot
+// =========================================================================
+function buildPointGrid(points) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of points) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+    }
+    const span = Math.max(maxX - minX, maxY - minY) || 1;
+    const cell = span / Math.max(4, Math.ceil(Math.sqrt(points.length)));
+    const cols = Math.floor((maxX - minX) / cell) + 1;
+    const rows = Math.floor((maxY - minY) / cell) + 1;
+    const buckets = new Map();
+    const colOf = (p) => Math.min(cols - 1, Math.max(0, Math.floor((p.x - minX) / cell)));
+    const rowOf = (p) => Math.min(rows - 1, Math.max(0, Math.floor((p.y - minY) / cell)));
+    points.forEach((p, i) => {
+        const key = rowOf(p) * cols + colOf(p);
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(i);
+    });
+    return { cell, cols, rows, buckets, colOf, rowOf };
+}
+
+function tspTour(points) {
+    const n = points.length;
+    if (n < 3) return points.slice();
+
+    const grid = buildPointGrid(points);
+    const used = new Uint8Array(n);
+
+    function nearestUnused(from) {
+        const pcx = grid.colOf(from), pcy = grid.rowOf(from);
+        let best = -1, bestD = Infinity;
+        const maxRing = Math.max(grid.cols, grid.rows);
+        for (let k = 0; k <= maxRing; k++) {
+            if (best >= 0 && (k - 1) * grid.cell > bestD) break;
+            for (let cy = pcy - k; cy <= pcy + k; cy++) {
+                if (cy < 0 || cy >= grid.rows) continue;
+                for (let cx = pcx - k; cx <= pcx + k; cx++) {
+                    if (cx < 0 || cx >= grid.cols) continue;
+                    if (k > 0 && cx !== pcx - k && cx !== pcx + k && cy !== pcy - k && cy !== pcy + k) continue;
+                    for (const i of grid.buckets.get(cy * grid.cols + cx) || []) {
+                        if (used[i]) continue;
+                        const d = Math.hypot(points[i].x - from.x, points[i].y - from.y);
+                        if (d < bestD) { bestD = d; best = i; }
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    const tour = [points[0]];
+    used[0] = 1;
+    let cursor = points[0];
+    for (let k = 1; k < n; k++) {
+        const next = nearestUnused(cursor);
+        if (next < 0) break;
+        used[next] = 1;
+        cursor = points[next];
+        tour.push(cursor);
+    }
+
+    // Same 2-opt argument as the stroke router: reversing an interior run leaves every
+    // gap inside it unchanged, so the delta is just the two gaps at the ends.
+    const gap = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const deadline = Date.now() + 2000;
+    const window = tour.length > 2000 ? 200 : tour.length;
+    let improved = true;
+    while (improved) {
+        improved = false;
+        for (let i = 1; i < tour.length - 2; i++) {
+            if (Date.now() > deadline) return tour;
+            const limit = Math.min(tour.length - 2, i + window);
+            for (let j = i + 1; j <= limit; j++) {
+                const delta = (gap(tour[i - 1], tour[j]) + gap(tour[i], tour[j + 1]))
+                            - (gap(tour[i - 1], tour[i]) + gap(tour[j], tour[j + 1]));
+                if (delta < -1e-9) {
+                    let a = i, b = j;
+                    while (a < b) { const t = tour[a]; tour[a] = tour[b]; tour[b] = t; a++; b--; }
+                    improved = true;
+                    break;
+                }
+            }
+        }
+    }
+    return tour;
+}
+
+// =========================================================================
+// FLOW FIELD HATCHING
+// Hatch lines follow the image's own structure instead of a fixed angle: the Sobel
+// gradient points across an edge, so travelling PERPENDICULAR to it runs along the
+// form. Streamlines are seeded on a grid and stop when they reach ground another
+// streamline already covers, which keeps them evenly spaced (Jobard & Lefer).
+// =========================================================================
+function flowFieldPass(layer, spacingPx, scale, isTargetPixel) {
+    const w = canvas.width, h = canvas.height;
+    const cell = Math.max(1, spacingPx);
+    const gCols = Math.ceil(w / cell), gRows = Math.ceil(h / cell);
+    const occupied = new Uint8Array(gCols * gRows);
+    const fallback = (layer.angle1 * Math.PI) / 180;
+
+    function direction(x, y) {
+        const xi = Math.min(w - 2, Math.max(1, Math.floor(x)));
+        const yi = Math.min(h - 2, Math.max(1, Math.floor(y)));
+        const at = (dx, dy) => brightnessMap[(yi + dy) * w + (xi + dx)];
+        const gx = (at(1, -1) + 2 * at(1, 0) + at(1, 1)) - (at(-1, -1) + 2 * at(-1, 0) + at(-1, 1));
+        const gy = (at(-1, 1) + 2 * at(0, 1) + at(1, 1)) - (at(-1, -1) + 2 * at(0, -1) + at(1, -1));
+        const mag = Math.hypot(gx, gy);
+        // Flat ground has no meaningful gradient; fall back to the layer's angle.
+        if (mag < 12) return { x: Math.cos(fallback), y: Math.sin(fallback) };
+        return { x: -gy / mag, y: gx / mag };
+    }
+
+    const cellAt = (x, y) => Math.floor(y / cell) * gCols + Math.floor(x / cell);
+
+    function streamline(startX, startY, initialSign) {
+        const pts = [];
+        let x = startX, y = startY, prev = null;
+        for (let step = 0; step < 4000; step++) {
+            if (x < 0 || x >= w || y < 0 || y >= h) break;
+            if (!isTargetPixel(x, y)) break;
+            if (pts.length > 2 && occupied[cellAt(x, y)]) break;
+            pts.push({ x, y });
+
+            let d = direction(x, y);
+            // The field is undirected, so keep stepping the same way we were going.
+            if (prev === null) d = { x: d.x * initialSign, y: d.y * initialSign };
+            else if (d.x * prev.x + d.y * prev.y < 0) d = { x: -d.x, y: -d.y };
+            prev = d;
+            x += d.x;
+            y += d.y;
+        }
+        return pts;
+    }
+
+    for (let sy = cell / 2; sy < h; sy += cell) {
+        for (let sx = cell / 2; sx < w; sx += cell) {
+            if (!isTargetPixel(sx, sy)) continue;
+            if (occupied[cellAt(sx, sy)]) continue;
+
+            const forward = streamline(sx, sy, 1);
+            const backward = streamline(sx, sy, -1);
+            const full = backward.slice(1).reverse().concat(forward);
+            if (full.length < 3) continue;
+
+            for (const p of full) {
+                const c = cellAt(p.x, p.y);
+                if (c >= 0 && c < occupied.length) occupied[c] = 1;
+            }
+            emitStroke(full.map(p => ({ x: p.x * scale, y: (h - p.y) * scale })));
+        }
+    }
+}
+
+// =========================================================================
 // UNIFIED UI SIDEBAR MANAGER
 // =========================================================================
 function updateUiPanels() {
@@ -838,12 +1098,15 @@ function updateUiPanels() {
         globalPatternContainer.style.display = "none";
     }
 
-    if (mode === "bw" && (pattern === "hatch" || pattern === "crosshatch")) {
+    if (mode === "bw" && (pattern === "hatch" || pattern === "crosshatch" || pattern === "flowfield")) {
         globalAngleContainer.style.display = "block";
         angle2Block.style.display = (pattern === "crosshatch") ? "block" : "none";
     } else {
         globalAngleContainer.style.display = "none";
     }
+
+    const contourBlock = document.getElementById("contourLevelsBlock");
+    if (contourBlock) contourBlock.style.display = (mode === "bw" && pattern === "contour") ? "block" : "none";
 
     if (mode === "outline" || enableOutlineCheckbox.checked) {
         outlineOptionsPanel.style.display = "block";
@@ -915,6 +1178,10 @@ function createLayerRow(cutoffVal = 128, spacingVal = 1.5, patternVal = "crossha
             <option value="hatch" ${patternVal === 'hatch' ? 'selected' : ''}>Hatch</option>
             <option value="diagonal" ${patternVal === 'diagonal' ? 'selected' : ''}>Diagonal</option>
             <option value="concentric" ${patternVal === 'concentric' ? 'selected' : ''}>Concentric / Spiral</option>
+            <option value="flowfield" ${patternVal === 'flowfield' ? 'selected' : ''}>Flow Field</option>
+            <option value="contour" ${patternVal === 'contour' ? 'selected' : ''}>Topographic Contours</option>
+            <option value="stipple" ${patternVal === 'stipple' ? 'selected' : ''}>Stipple Dots</option>
+            <option value="tsp" ${patternVal === 'tsp' ? 'selected' : ''}>One Continuous Line</option>
         </select>
 
         <div class="layer-angles-div" style="margin-top: 5px;">
@@ -935,7 +1202,7 @@ function createLayerRow(cutoffVal = 128, spacingVal = 1.5, patternVal = "crossha
 
     function adjustRowAngleVisibility() {
         const p = patternSelect.value;
-        if (p === "hatch" || p === "crosshatch") {
+        if (p === "hatch" || p === "crosshatch" || p === "flowfield") {
             angle1Block.style.display = "block";
             angle2Block.style.display = (p === "crosshatch") ? "block" : "none";
         } else {
@@ -982,8 +1249,9 @@ refreshTonePreview();
 // =========================================================================
 // RDP VECTOR OUTLINE GENERATION ENGINE
 // =========================================================================
-function outlineImage(threshold) {
-    const scale = getScale();
+// Returns iso-contours of the brightness field at `threshold`, as chains of points in
+// PIXEL space. Shared by the outline engine and the topographic fill pattern.
+function traceIsoContours(threshold) {
     const width = canvas.width;
     const height = canvas.height;
     const field = brightnessMap;
@@ -1055,6 +1323,7 @@ function outlineImage(threshold) {
 
     // Link the segments into contours. Open ends first, so a contour that runs off the
     // edge of the image is traced from its end rather than being started in the middle.
+    const contours = [];
     const visited = new Set();
     const order = [];
     for (const [id, neighbours] of adj) if (neighbours.length === 1) order.push(id);
@@ -1082,8 +1351,20 @@ function outlineImage(threshold) {
         // Close the loop when the trace came back around to where it started.
         if ((adj.get(previous) || []).includes(start)) chain.push(chain[0]);
 
-        emitStroke(chain.map(p => ({ x: p.x * scale, y: (height - p.y) * scale })));
+        contours.push(chain);
     }
+    return contours;
+}
+
+// Pixel-space chains -> millimetres, ready for emitStroke.
+function contoursToMm(contours, scale) {
+    const height = canvas.height;
+    return contours.map(chain => chain.map(p => ({ x: p.x * scale, y: (height - p.y) * scale })));
+}
+
+function outlineImage(threshold) {
+    const scale = getScale();
+    for (const path of contoursToMm(traceIsoContours(threshold), scale)) emitStroke(path);
 }
 
 function drawGCodePreview() {
