@@ -1,13 +1,10 @@
-# Claude Code / AI assistant files
-CLAUDE.md
-CLAUDE.local.md
-.claude/
-.claude.json
-.mcp.json
-
 # Editor / OS cruft
 .vscode/
 .idea/
+.claude/
+.claude.json
+.mcp.json
+CLAUDE.local.md
 .DS_Store
 Thumbs.db
 *~
